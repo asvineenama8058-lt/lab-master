@@ -342,7 +342,7 @@ function Chatbot() {
               </div>
               <div style={{ 
                 background: msg.role === 'user' ? 'var(--primary)' : 'var(--surface)', 
-                color: msg.role === 'user' ? 'white' : 'var(--text-main)',
+                color: msg.isError ? 'var(--danger)' : (msg.role === 'user' ? 'white' : 'var(--text-main)'),
                 padding: '0.8rem 1.1rem',
                 borderRadius: msg.role === 'user' ? '18px 18px 2px 18px' : '18px 18px 18px 2px',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
@@ -350,8 +350,7 @@ function Chatbot() {
                 fontSize: '0.95rem',
                 lineHeight: '1.5',
                 whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                color: msg.isError ? 'var(--danger)' : undefined
+                wordBreak: 'break-word'
               }}>
                 {/* Process markdown-like headers for local search responses */}
                 {msg.content.split('\n').map((line, i) => {

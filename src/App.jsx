@@ -1,31 +1,32 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ProgressProvider } from './context/ProgressContext';
 import AppLayout from './components/Layout/AppLayout';
-import Home from './pages/Home';
-import Subjects from './pages/Subjects';
-import SubjectDetail from './pages/SubjectDetail';
-import QuizRunner from './pages/QuizRunner';
-import Bookmarks from './pages/Bookmarks';
-import Profile from './pages/Profile';
-import VivaView from './pages/VivaView';
-import Leaderboard from './pages/Leaderboard';
-import Chatbot from './pages/Chatbot';
-import Login from './pages/Login';
+import LoadingState from './components/UX/LoadingState';
+import ErrorBoundary from './components/UX/ErrorBoundary';
 import './App.css';
+
+// Lazy loading components for code splitting
+const Home = lazy(() => import('./pages/Home'));
+const Subjects = lazy(() => import('./pages/Subjects'));
+const SubjectDetail = lazy(() => import('./pages/SubjectDetail'));
+const QuizRunner = lazy(() => import('./pages/QuizRunner'));
+const Bookmarks = lazy(() => import('./pages/Bookmarks'));
+const Profile = lazy(() => import('./pages/Profile'));
+const VivaView = lazy(() => import('./pages/VivaView'));
+const Leaderboard = lazy(() => import('./pages/Leaderboard'));
+const Chatbot = lazy(() => import('./pages/Chatbot'));
+const Login = lazy(() => import('./pages/Login'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 // Component to protect routes
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
   
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-main)' }}>
-        <div className="loader"></div>
-      </div>
-    );
+    return <LoadingState />;
   }
   
   if (!user) {
@@ -37,35 +38,42 @@ const ProtectedRoute = ({ children }) => {
 
 function App() {
   return (
-    <AuthProvider>
-      <ProgressProvider>
-        <AppProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              
-              <Route path="/*" element={
-                <ProtectedRoute>
-                  <AppLayout>
-                    <Routes>
-                      <Route path="/" element={<Home />} />
-                      <Route path="/subjects" element={<Subjects />} />
-                      <Route path="/subjects/:id" element={<SubjectDetail />} />
-                      <Route path="/quiz/:id" element={<QuizRunner />} />
-                      <Route path="/viva/:practicalId" element={<VivaView />} />
-                      <Route path="/bookmarks" element={<Bookmarks />} />
-                      <Route path="/profile" element={<Profile />} />
-                      <Route path="/leaderboard" element={<Leaderboard />} />
-                      <Route path="/chatbot" element={<Chatbot />} />
-                    </Routes>
-                  </AppLayout>
-                </ProtectedRoute>
-              } />
-            </Routes>
-          </BrowserRouter>
-        </AppProvider>
-      </ProgressProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ProgressProvider>
+          <AppProvider>
+            <BrowserRouter>
+              <Suspense fallback={<LoadingState />}>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  
+                  <Route path="/*" element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <Suspense fallback={<LoadingState />}>
+                          <Routes>
+                            <Route path="/" element={<Home />} />
+                            <Route path="/subjects" element={<Subjects />} />
+                            <Route path="/subjects/:id" element={<SubjectDetail />} />
+                            <Route path="/quiz/:id" element={<QuizRunner />} />
+                            <Route path="/viva/:practicalId" element={<VivaView />} />
+                            <Route path="/bookmarks" element={<Bookmarks />} />
+                            <Route path="/profile" element={<Profile />} />
+                            <Route path="/leaderboard" element={<Leaderboard />} />
+                            <Route path="/chatbot" element={<Chatbot />} />
+                            <Route path="*" element={<NotFound />} />
+                          </Routes>
+                        </Suspense>
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } />
+                </Routes>
+              </Suspense>
+            </BrowserRouter>
+          </AppProvider>
+        </ProgressProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
