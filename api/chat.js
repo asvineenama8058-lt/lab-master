@@ -3,51 +3,103 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { messages, mode, notesContext } = req.body;
-  
-  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'YOUR_OPENAI_API_KEY') {
-    return res.status(500).json({ 
-      error: { message: "OpenAI API key not configured." }
-    });
+  const { message } = req.body;
+
+  // Validation
+  if (!message || !message.trim()) {
+    return res.status(400).json({ error: "Message is required" });
   }
 
-  let systemPrompt = 'You are a professional medical lab assistant. Only answer questions related to medical laboratory science, hematology, microbiology, biochemistry, or pathology. Refuse non-medical queries politely (e.g. "I can only answer medical and laboratory-related questions."). Explain clearly for students. Give structured answers (definition, principle, steps, clinical significance where applicable).';
-
-  if (mode === 'notes') {
-    systemPrompt = `You are a strict examination assistant. You MUST ONLY answer the user's question using the provided Notes Context below. If the answer cannot be found comprehensively in the notes, you MUST reply strictly with "I cannot find this in the notes. Please ask something covered in your provided material." Do not use any outside knowledge.\n\nNOTES CONTEXT:\n${notesContext || 'No notes provided.'}`;
+  if (message.length > 500) {
+    return res.status(400).json({ error: "Message too long (max 500 characters)" });
   }
 
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
-          ...messages
-        ],
-        temperature: 0.7,
-        max_tokens: 1000
-      })
-    });
+  const trimmedMessage = message.trim();
+  console.log("User:", trimmedMessage);
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('OpenAI fetch error:', errorData);
-      return res.status(response.status).json(errorData);
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    console.error("OPENROUTER_API_KEY is missing");
+    return res.status(500).json({ error: "Server busy, try again" });
+  }
+
+  const systemPrompt = `You are a BMLT practical assistant. Always respond in this format:
+1. Principle (1 line)
+2. Procedure (3–4 steps)
+3. Viva questions (2 points)
+4. Precautions (2 points)
+Keep answers short and exam-focused.`;
+
+  const models = [
+    'meta-llama/llama-3.1-8b-instruct:free',
+    'openai/gpt-3.5-turbo'
+  ];
+
+  async function callOpenRouter(model) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://lab-master.vercel.app', // Optional for OpenRouter
+          'X-Title': 'Lab Master'
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: trimmedMessage }
+          ],
+          temperature: 0.7,
+          max_tokens: 500
+        })
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json();
+      const content = data?.choices?.[0]?.message?.content?.trim();
+      
+      if (!content) {
+        throw new Error("Empty response content");
+      }
+
+      return content;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
     }
+  }
 
-    const data = await response.json();
-    return res.status(200).json(data);
-  } catch (error) {
-    console.error('AI API Error:', error.message);
-    return res.status(500).json({ error: { message: "Server error. Please try again later." } });
+  let finalContent = null;
+  let lastError = null;
+
+  // Try primary model, then fallback
+  for (const model of models) {
+    try {
+      finalContent = await callOpenRouter(model);
+      if (finalContent) break;
+    } catch (err) {
+      console.warn(`Failed to call ${model}:`, err.message);
+      lastError = err;
+    }
+  }
+
+  if (finalContent) {
+    console.log("AI:", finalContent);
+    return res.status(200).json({ content: finalContent });
+  } else {
+    console.error("All models failed:", lastError?.message);
+    return res.status(500).json({ error: "AI is busy, try again" });
   }
 }
